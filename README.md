@@ -1,220 +1,155 @@
 # career-plan
 
-**一个让求职从"散乱"变成"有上下文、能复用"的 Claude Code 插件。**
-
-每次聊一家公司、准备一场面试、复盘一次对话 —— 结果都沉淀到本地 memory，下一次从这里接着跑。
+**让 Claude Code 陪你找工作时有"记性"。** 每次聊过的公司、准备过的面试、复盘过的对话，结果都存在本机，下一次接着用。
 
 ---
 
-## 为什么要有它
+## 这是什么 / 为什么做
 
-用 Claude Code 陪自己找工作会遇到一个问题：**每开一个新会话就是一次从零开始**。你投过的岗位、吐槽过的红旗、反复犯的毛病 —— Claude 都不知道。
+找工作本身是一个**有流程、有闭环**的事：尽调一家公司 → 评估岗位值不值得投 → 投了就开始准备面试 → 面完复盘 → 把这一轮学到的东西带到下一轮。
 
-career-plan 把"求职"拆成 5 个 skill，它们之间用一套本地 memory 文件协作，形成：
+但用 Claude Code 陪自己走这套流程的时候，每次都是从零开始：上次查到的公司细节没沉淀、面试暴露的弱项下次 Claude 就忘了、一路做过的决策散落在各个会话里找不回来。跑十几家下来，**经验并没有叠加**——你其实在重复做同一件事十几次。
 
-```
-投前尽调 → 岗位匹配度 → 面试准备 → 面试复盘 → 经验沉淀 → 反哺下一次
-```
+career-plan 要解决的就是这件事：**把每个环节的产出自动写进本地，下一个环节自动读过来，结束时把"这轮学到什么"沉淀成下一轮能直接用上的经验**。用得越久，你的画像、反复犯的毛病、面试经验、历次决策都会变成可复用的资产，而不是聊完就散。
 
 ---
 
-## 架构一图
+## 一图看懂
 
 ```mermaid
 flowchart LR
-    subgraph Skills
-        CR[company-research]
-        JF[job-fit-analyzer]
-        IP[interview-prep]
-        ID[interview-debrief]
-        DL[decision-log]
+    subgraph Skills["五个技能"]
+        CR[company-research<br/>公司尽调]
+        JF[job-fit-analyzer<br/>岗位匹配度]
+        IP[interview-prep<br/>面试准备]
+        ID[interview-debrief<br/>面试复盘]
+        DL[decision-log<br/>决策日志]
     end
 
-    subgraph Memory
-        IDX[pipeline/_index.md]
-        PF["pipeline/&lt;公司&gt;.md"]
-        PAT[patterns.md]
-        DEC[decisions.md]
+    subgraph Memory["本地记忆"]
+        IDX[pipeline/_index<br/>活跃公司清单]
+        PF["pipeline/&lt;公司&gt;<br/>每家一份档案"]
+        PAT[patterns<br/>反复出现的模式]
+        DEC[decisions<br/>决策流水]
     end
 
-    subgraph External
-        PROF["profile/ (PII, gitignored)"]
-        TRS["~/.claude/projects/*.jsonl"]
-    end
-
-    CR -->|write| PF
+    CR --> PF
     CR --> IDX
-    JF -->|read| PF
-    JF -->|read| PAT
-    JF -->|write| PF
-    IP -->|read| PF
-    IP -->|read| PAT
-    IP -->|read| PROF
-    IP -->|write| PF
-    ID -->|read| PF
-    ID -->|read| PAT
-    ID -->|write| PF
-    ID -->|append| PAT
-    DL -->|mine| TRS
-    DL -->|write| DEC
-    JF -->|read| PROF
-
-    R[researcher subagent<br/>WebSearch/WebFetch/Read] -.->|called by| CR
+    JF --> PF
+    IP --> PF
+    ID --> PF
+    ID --> PAT
+    DL --> DEC
+    PF -.上下文.-> JF
+    PF -.上下文.-> IP
+    PF -.上下文.-> ID
+    PAT -.经验.-> IP
+    PAT -.经验.-> ID
 ```
 
-**核心 idea**：5 个 skill 不直接互相调用，而是各自读写共享 memory。Memory 是解耦的总线。
+五个技能不互相调用，各自读写共享的本地记忆文件——这就是"有记性"的实现方式。
 
 ---
 
-## 5 个 Skill
+## 五个技能分别在做什么
 
-| Skill | 什么时候触发 | 干什么 |
+| 技能 | 什么时候它会自己跳出来 | 做什么 |
 |---|---|---|
-| **company-research** | "查一下 XX 公司" · "帮我尽调 XX" | 委派 `researcher` subagent 深搜 → 基本面/业务/团队/媒体/红旗 5 块报告 → 写入 `pipeline/<slug>.md` |
-| **job-fit-analyzer** | 贴 JD · "这个岗位值不值得投" · "哪个适合我" | 识别 Inbound/Outbound 场景 → 对照 `profile/user-profile.md` → 维度打分 → 推荐简历版本 |
-| **interview-prep** | "准备 XX 面试" · "帮我模拟面试" | 读 `profile/resume_*.md` + 历史 patterns → 四阶段流程：信息收集 → 补足计划 → 模拟面试 → 整体评估 |
-| **interview-debrief** | "帮我复盘刚才的面试" · 贴转录/录音 | 对照 JD 和 patterns → 5 块输出（通过率/逐题打分/润色稿/缺口诊断/补课清单）→ 提炼可复用模式追加到 `patterns.md` |
-| **decision-log** | "整理我最近的求职决策" · "sync decisions" | 扫 `~/.claude/projects/` 转录 → 粗筛命中求职关键词 → 细筛（Claude 判断）→ 追加到 `decisions.md`。幂等（state 文件去重） |
-
-**辅助**：`agents/researcher.md` 是给 `company-research` 用的深搜 subagent，Haiku 模型，只给 WebSearch + WebFetch + Read 权限。
-
----
-
-## Memory 布局
-
-```
-memory/
-├── pipeline/
-│   ├── _index.md            # 活跃 pipeline 一览（自动维护）
-│   ├── <公司-slug>.md        # 一家一文件：尽调 / JD / 面试准备 / 复盘
-│   └── archive/             # "凉了"或"拿到 offer"后手动挪进来
-├── patterns.md              # 反复出现的模式（只追加，人在环里）
-├── decisions.md             # 决策日志（decision-log 挖掘填充）
-└── .decision-log-state.json # 挖掘脚本的已处理 session id
-```
-
-**为什么一公司一文件？** 同时推 2-3 家时，单文件会让下游 skill 读到无关公司的上下文造成污染。一公司一文件 + `_index.md` 导航是最干净的解法。
+| **company-research** | 你说"查一下 XX 公司"、"帮我尽调 XX"、"XX 这家公司怎么样" | 让一个专门的研究 subagent 深度网搜，把公司的基本面、业务、团队、媒体痕迹、风险信号汇成一份报告；同时存进该公司的档案文件 |
+| **job-fit-analyzer** | 你贴了一份 JD、"这个岗位值不值得投"、"哪个适合我" | 先判断场景（HR 主动来找你还是你主动投）→ 对照你的画像打分 → 推荐用哪版简历 |
+| **interview-prep** | "准备 XX 面试"、"帮我模拟面试"、"下周要面 XX 怎么准备" | 按四个阶段走：收集背景 → 给补足计划 → 出题模拟 → 评估。出题会用你简历里真实的项目和数据，不编造 |
+| **interview-debrief** | "帮我复盘刚才的面试"、贴转录或录音 | 给出通过率估计、逐题打分、重答版本、缺口诊断、补课清单五块；并把可复用的经验教训沉淀进记忆里 |
+| **decision-log** | "整理我最近的求职决策"、"sync decisions" | 扫你过去的 Claude Code 对话，把真正的"投不投 / 怎么准备 / 要不要接 offer"这类决策摘出来，记成流水账 |
 
 ---
 
 ## 安装
 
-### 前置
-- Claude Code CLI
-- Node 18+（挖掘脚本用）
+把仓库下载到本机任意位置，在 Claude Code 里 `/plugin` 选本地路径加载即可。
 
-### 步骤
+### 装完要做的一次性准备
+
+这个插件会用到两类属于你的私人信息：
+
+1. **你的画像**——学历、实习经历、掌握的技能、你在乎什么
+2. **你的简历**——可以有多个版本，对应你主攻的不同方向
+
+第一次使用时，在终端里跑：
 
 ```bash
-# 1. 把插件放到任意路径（推荐开发路径或 ~/.claude/plugins 下）
-git clone <本仓库> ~/career-plan   # 或 cp -r 进去
+cd <插件所在目录>                                               # cd = 进入文件夹
 
-# 2. 准备用户数据（不进 git）
-cd ~/career-plan
-cp profile.template/user-profile.md profile/user-profile.md
-cp profile.template/resume_template.md profile/resume_ai_technical.md
-# 按需增加 resume_aigc.md、resume_strategy_growth.md
-# 填入你的真实数据
-
-# 3. 在 Claude Code 里注册插件
-# (方式 A) /plugin 面板里选本地目录
-# (方式 B) 或放进 ~/.claude/plugins/<marketplace>/plugins/career-plan/
+cp profile.template/user-profile.md profile/user-profile.md    # cp = copy，复制模板
+cp profile.template/resume_template.md profile/resume_main.md  # 复制简历模板
 ```
+
+然后用你顺手的编辑器（VS Code / Typora / 任何文本编辑器都行）打开 `profile/` 下的这两个文件，把里面的占位符换成你自己的真实信息。
+
+如果你针对**不同方向**准备了多份简历（比如同时投技术岗和运营岗），就多复制几份、起不同名字（例如 `resume_tech.md`、`resume_ops.md`）。`interview-prep` 会在面试准备时问你这次用的是哪版。
 
 ---
 
-## 怎么用 · 一个完整例子
+## 一个完整例子
 
-假设你下周面一家叫 Foo Inc. 的公司：
+假设下周一你要面一家叫 **Northbound** 的公司，职位是 XX。整个流程大概长这样：
 
 ```
-你：查一下 Foo Inc.
-Claude: → company-research
-        → 写入 memory/pipeline/foo-inc.md
-        → 更新 memory/pipeline/_index.md
+你：查一下 Northbound 这家公司
+→ company-research：用研究 subagent 网搜 + 汇总成报告
+→ 在 memory/pipeline/ 下自动建了 northbound.md，把尽调结果存进去
 
-你：[粘贴 JD] 这个岗位值不值得投？
-Claude: → job-fit-analyzer
-        → 读 foo-inc.md 的尽调 + profile/user-profile.md
-        → 维度打分 + 简历版本建议
-        → 追加 JD 子节到 foo-inc.md
+你：（贴 JD）这个岗位我要不要投？
+→ job-fit-analyzer：读刚才的尽调 + 你的画像 → 打分、给简历建议
+→ 把 JD 要点追加到 northbound.md
 
-你：准备 Foo 的面试，下周四
-Claude: → interview-prep
-        → 读 foo-inc.md + patterns.md + profile/resume_ai_technical.md
-        → 四阶段流程（问你简历版本/准备时间/担忧点 → 补足计划 → 模拟 → 评估）
-        → 追加"面试准备"子节到 foo-inc.md
+你：帮我准备 Northbound 的面试，周一下午
+→ interview-prep：读 northbound.md + 你过去反复犯的毛病
+→ 问你用哪版简历、有多少准备时间、最担心什么
+→ 给出补足计划 → 开始模拟面试
 
-面试结束。
-你：[粘贴转录] 帮我复盘
-Claude: → interview-debrief
-        → 读 foo-inc.md 全节
-        → 5 块输出
-        → 追加"复盘"子节到 foo-inc.md
-        → 提炼 2-3 条模式追加到 patterns.md（显式告知你，你可以否决）
+（面试结束后）
+你：（粘贴转录）帮我复盘一下刚才的面试
+→ interview-debrief：给出 5 块复盘
+→ 追加"复盘"到 northbound.md
+→ 把这次学到的 2-3 条可复用经验加进 memory/patterns，下次面试会自动用上
 
-一周后。
+（一周后）
 你：整理我最近的求职决策
-Claude: → decision-log
-        → 跑 scripts/mine-decisions.mjs 扫 ~/.claude/projects
-        → 粗筛命中 N 条 → 细筛 K 条有效决策
-        → 追加到 decisions.md
+→ decision-log：扫过去的对话，把真的做了决策的那些摘出来存成流水账
 ```
 
 ---
 
-## 设计原则
+## 设计原则（人话版）
 
-1. **只追加不改写**：`patterns.md` 和 `decisions.md` 的自动写入一律 append 到末尾；改动由用户手动做
-2. **文件不存在就不写**：`pipeline/<slug>.md` 不存在 = 还没跑尽调 = 不自动建。唯一可新建的是 `company-research`
-3. **读 memory 是辅助**：不能因此跳过 skill 本身对用户的对话
-4. **decision-log 不实时**：用挖掘（扫转录）而非实时追加。用户要 sync 才跑，幂等可重入
-5. **归档显式触发**：用户说"凉了"/"拿到 offer"时才把 `pipeline/<slug>.md` 挪到 `archive/`，不自动 GC
-6. **研究隔离**：深搜交给 `researcher` subagent（Haiku 模型）吐干净简报，原始搜索结果不污染主对话
-7. **权限最小化**：researcher 只有 WebSearch + WebFetch + Read，不给写文件
-
----
-
-## 隐私 & 安全
-
-- `profile/`、`memory/pipeline/`、`memory/patterns.md`、`memory/decisions.md` **全部 gitignored**
-- git 里只有插件骨架 + `profile.template/`
-- 所有数据都在本地，不发任何外部服务（researcher 除外 —— 它会走 WebSearch，但不上传你的 profile）
+1. **自动写入都是"添一行"，不动原内容**——怕插件写错了把你的笔记覆盖。要改某一条，你告诉我改什么、改成什么，我动手。
+2. **没查过的公司不会凭空建档**——每家公司的档案文件是 `company-research` 第一次查这家时才建的，不会预生成一堆空文件。
+3. **"这家凉了 / 拿到 offer 了" 要你说**——这类决定由你说出来，插件才会把档案挪去 `archive/`。它不会自作主张地判断。
+4. **挖掘决策，不监听决策**——不是每次对话都在日志里塞一行，而是你主动喊"整理一下"它才去扫过去的聊天记录摘出决策。
+5. **研究和主对话隔离**——深度网搜交给专门的 subagent 去做，原始搜索结果留在它那里，只把干净的简报返回给你。
+6. **subagent 只能读**——研究用的 subagent 只有网搜 + 读网页的权限，不能写任何文件。
 
 ---
 
-## 限制
+## 已知限制
 
-- **非实时**：decision-log 需要你主动喊"sync"。想要实时追加就自己改成 Stop hook
-- **单用户单机**：memory 是本地文件系统。跨机同步靠你自己
-- **researcher 依赖网搜**：国内工商信息（天眼查/爱企查）如果搜不到，会提示你手动贴截图
-- **未验证多公司并行的极端情况**：同时推超过 5 家可能 `_index.md` 需要分组
+- **不是实时的**：决策日志需要你主动喊"sync"
+- **单机**：所有记忆都在本地文件系统，跨电脑同步要你自己搞（比如用 iCloud / Dropbox 同步插件目录）
+- **国内工商数据**：如果研究 subagent 搜不到（天眼查/爱企查可能没公开），会提示你手动贴截图
 
 ---
 
-## 目录结构
+## 目录长这样
 
 ```
 career-plan/
-├── .claude-plugin/plugin.json
-├── CLAUDE.md                  # 插件级跨 skill 约定
-├── README.md                  # 本文件
-├── .gitignore
-├── skills/
-│   ├── company-research/SKILL.md
-│   ├── job-fit-analyzer/SKILL.md
-│   ├── interview-prep/SKILL.md
-│   ├── interview-debrief/SKILL.md
-│   └── decision-log/
-│       ├── SKILL.md
-│       └── scripts/mine-decisions.mjs
-├── agents/researcher.md
-├── profile.template/          # 提交到 git
-│   ├── user-profile.md
-│   └── resume_template.md
-├── profile/                   # gitignored
-│   └── user-profile.md
-└── memory/                    # 大部分 gitignored
-    ├── pipeline/
-    └── ...
+├── .claude-plugin/plugin.json # 插件元信息
+├── CLAUDE.md                  # 给 Claude 看的跨技能约定
+├── README.md                  # 给人看的（本文件）
+├── skills/                    # 五个技能各一个文件夹
+├── agents/researcher.md       # 深度研究 subagent
+├── profile.template/          # 提交到 git：空白模板
+├── profile/                   # 不提交：你的真实画像和简历
+└── memory/                    # 不提交：运行时记忆
+    └── pipeline/              # 每家公司一份档案
 ```
