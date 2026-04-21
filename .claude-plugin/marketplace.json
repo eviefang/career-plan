@@ -1,0 +1,13 @@
+{
+  "name": "career-plan",
+  "owner": {
+    "name": "eviefang"
+  },
+  "plugins": [
+    {
+      "name": "career-plan",
+      "source": "./",
+      "description": "Job-search workflow: company research, fit analysis, interview prep, debrief, decision mining."
+    }
+  ]
+}
