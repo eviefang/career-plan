@@ -1,0 +1,8 @@
+{
+  "name": "career-plan",
+  "version": "0.1.0",
+  "description": "Job-search workflow: company research, fit analysis, interview prep, debrief, decision mining. Builds a learning loop via memory/.",
+  "author": {
+    "name": "zhuyidp"
+  }
+}

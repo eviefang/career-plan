@@ -1,0 +1,16 @@
+# 用户本地数据 —— 永不提交
+profile/
+
+# memory/ 下全部是 runtime 数据，除了占位文件（.gitkeep / 模板）
+memory/pipeline/*
+!memory/pipeline/.gitkeep
+memory/pipeline/archive/
+memory/patterns.md
+memory/decisions.md
+memory/.decision-log-state.json
+
+# 系统
+.DS_Store
+
+# 临时
+*.log
