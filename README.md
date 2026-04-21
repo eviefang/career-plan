@@ -17,34 +17,28 @@ career-plan 要解决的就是这件事：**把每个环节的产出自动写进
 ## 一图看懂
 
 ```mermaid
-flowchart LR
-    subgraph Skills["五个技能"]
-        CR[company-research<br/>公司尽调]
-        JF[job-fit-analyzer<br/>岗位匹配度]
-        IP[interview-prep<br/>面试准备]
-        ID[interview-debrief<br/>面试复盘]
-        DL[decision-log<br/>决策日志]
-    end
+flowchart TD
+    CR[company-research<br/>公司尽调] --> JF[job-fit-analyzer<br/>岗位匹配度]
+    JF --> IP[interview-prep<br/>面试准备]
+    IP --> ID[interview-debrief<br/>面试复盘]
+    DL[decision-log<br/>决策日志]
 
-    subgraph Memory["本地记忆"]
-        IDX[pipeline/_index<br/>活跃公司清单]
-        PF["pipeline/&lt;公司&gt;<br/>每家一份档案"]
-        PAT[patterns<br/>反复出现的模式]
-        DEC[decisions<br/>决策流水]
-    end
+    PF[("pipeline/&lt;公司&gt;.md<br/>每家一份档案")]
+    PAT[(patterns.md<br/>反复出现的模式)]
+    DEC[(decisions.md<br/>决策流水)]
 
-    CR --> PF
-    CR --> IDX
-    JF --> PF
-    IP --> PF
-    ID --> PF
-    ID --> PAT
-    DL --> DEC
-    PF -.上下文.-> JF
-    PF -.上下文.-> IP
-    PF -.上下文.-> ID
-    PAT -.经验.-> IP
-    PAT -.经验.-> ID
+    CR -- 写 --> PF
+    JF -- 写 --> PF
+    IP -- 写 --> PF
+    ID -- 写 --> PF
+    ID -- 沉淀 --> PAT
+    DL -- 写 --> DEC
+
+    PF -. 读 .-> JF
+    PF -. 读 .-> IP
+    PF -. 读 .-> ID
+    PAT -. 读 .-> IP
+    PAT -. 读 .-> ID
 ```
 
 五个技能不互相调用，各自读写共享的本地记忆文件——这就是"有记性"的实现方式。
@@ -120,7 +114,7 @@ cp profile.template/resume_template.md profile/resume_main.md  # 复制简历模
 
 ---
 
-## 设计原则（人话版）
+## 设计原则
 
 1. **自动写入都是"添一行"，不动原内容**——怕插件写错了把你的笔记覆盖。要改某一条，你告诉我改什么、改成什么，我动手。
 2. **没查过的公司不会凭空建档**——每家公司的档案文件是 `company-research` 第一次查这家时才建的，不会预生成一堆空文件。
@@ -139,7 +133,7 @@ cp profile.template/resume_template.md profile/resume_main.md  # 复制简历模
 
 ---
 
-## 目录长这样
+## 文件目录
 
 ```
 career-plan/
@@ -148,8 +142,8 @@ career-plan/
 ├── README.md                  # 给人看的（本文件）
 ├── skills/                    # 五个技能各一个文件夹
 ├── agents/researcher.md       # 深度研究 subagent
-├── profile.template/          # 提交到 git：空白模板
-├── profile/                   # 不提交：你的真实画像和简历
-└── memory/                    # 不提交：运行时记忆
+├── profile.template/          # 空白模板，首次使用时复制出来填
+├── profile/                   # 你的画像和简历（本地）
+└── memory/                    # 运行时记忆（本地）
     └── pipeline/              # 每家公司一份档案
 ```
